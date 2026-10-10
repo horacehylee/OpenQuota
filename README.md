@@ -129,6 +129,16 @@ The standalone binary lands at `src-tauri/target/release/openquota.exe` and only
 requires the WebView2 runtime that ships with Windows 10 and 11. Settings still
 live in `%APPDATA%\Roaming\io.github.deviffyy.openquota`.
 
+Build, tag, and publish a portable release to GitHub in one step:
+
+```sh
+corepack pnpm release            # add --dry-run to skip publishing
+```
+
+The release tag follows `portable-<version>-<yyyyMMddHHmm>` in local time, so
+repeated builds of the same version stay distinguishable. Requires the GitHub
+CLI (`gh`) signed in with `gh auth login`.
+
 Maintainers can review updater and optional native-signing requirements in
 [docs/releasing.md](docs/releasing.md).
 

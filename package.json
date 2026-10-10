@@ -10,6 +10,7 @@
     "build:installer": "tauri build --bundles nsis",
     "build:portable": "tauri build --no-bundle",
     "build:linux": "tauri build --bundles deb,appimage",
+    "release": "node scripts/release-portable.js",
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
     "test": "vitest run",
     "test:watch": "vitest",
