@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenQuota Windows tray icon concept</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #111111;
+      --muted: #5f5f5f;
+      --card: #ffffff;
+      --page: #f7f7f7;
+      --line: #e3e3e3;
+      --taskbar-light: #f3f3f3;
+      --taskbar-dark: #202020;
+      --glyph-light: #1a1a1a;
+      --glyph-dark: #ffffff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 48px;
+      background: var(--page);
+      color: var(--ink);
+      font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      font-size: 14px;
+    }
+
+    main {
+      width: min(960px, 100%);
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .lede {
+      width: 68ch;
+      max-width: 100%;
+      margin: 0 0 32px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .section-note {
+      margin: 0 0 20px;
+      color: var(--muted);
+    }
+
+    .scale-row,
+    .tray-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .state {
+      display: grid;
+      justify-items: center;
+      gap: 10px;
+      min-width: 72px;
+    }
+
+    .state svg {
+      display: block;
+      overflow: visible;
+    }
+
+    .state-label {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .taskbar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      height: 56px;
+      border-radius: 8px;
+      padding: 0 14px;
+    }
+
+    .taskbar.light {
+      background: var(--taskbar-light);
+      color: var(--glyph-light);
+      box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.08);
+    }
+
+    .taskbar.dark {
+      background: var(--taskbar-dark);
+      color: var(--glyph-dark);
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .tray-row {
+      justify-content: center;
+      gap: 18px;
+      align-items: center;
+    }
+
+    .tray-item {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+    }
+
+    .tray-item.active {
+      background: color-mix(in srgb, currentColor 10%, transparent);
+    }
+
+    .tray-item svg {
+      display: block;
+    }
+
+    .chevron {
+      width: 9px;
+      height: 9px;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(-135deg) translate(1px, 1px);
+      opacity: 0.75;
+    }
+
+    footer {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>OpenQuota Windows tray concept</h1>
+    <p class="lede">
+      One foreground color. The faint O outline always stays visible. The solid arc shortens as
+      quota left decreases, then disappears at zero.
+    </p>
+
+    <section>
+      <h2>Remaining quota states</h2>
+      <p class="section-note">Shown at four times actual size for review.</p>
+      <div class="scale-row" id="scaleRow"></div>
+    </section>
+
+    <section>
+      <h2>Dark taskbar</h2>
+      <p class="section-note">OpenQuota appears between standard tray glyphs at approximately actual size.</p>
+      <div class="taskbar dark">
+        <div class="tray-row" id="darkTray"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Light taskbar</h2>
+      <p class="section-note">Same geometry, black foreground instead of white.</p>
+      <div class="taskbar light">
+        <div class="tray-row" id="lightTray"></div>
+      </div>
+    </section>
+
+    <footer>Design mockup only. Geometry is illustrative and not implemented in the app.</footer>
+  </main>
+
+  <script>
+    const fractions = [
+      [1.0, "100% left"],
+      [0.75, "75% left"],
+      [0.5, "50% left"],
+      [0.25, "25% left"],
+      [0.0, "0% left"],
+    ];
+
+    function gauge(fraction, size) {
+      const amount = Math.max(0, Math.min(1, fraction)) * 100;
+      const dashArray = `${amount} ${100 - amount}`;
+      return `
+        <svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="2.9" stroke-linecap="round">
+            <circle cx="16" cy="16" r="10.5" pathLength="100" opacity="0.42"/>
+            <circle
+              cx="16"
+              cy="16"
+              r="10.5"
+              pathLength="100"
+              stroke-dasharray="${dashArray}"
+              transform="rotate(-90 16 16)"
+            />
+          </g>
+        </svg>
+      `;
+    }
+
+    document.getElementById("scaleRow").innerHTML = fractions.map(([fraction, label]) => `
+      <div class="state">
+        ${gauge(fraction, 72)}
+        <span class="state-label">${label}</span>
+      </div>
+    `).join("");
+
+    function wifi() {
+      return `
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+            <path d="M2.4 6.8a9.2 9.2 0 0 1 13.2 0"/>
+            <path d="M4.8 9.6a5.9 5.9 0 0 1 8.4 0"/>
+          </g>
+          <circle cx="9" cy="13" r="1.4" fill="currentColor"/>
+        </svg>
+      `;
+    }
+
+    function volume() {
+      return `
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+          <path d="M3 7h2.6L9.5 3.6v10.8L5.6 11H3z" fill="currentColor"/>
+          <path d="M12 6.5a3.5 3.5 0 0 1 0 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      `;
+    }
+
+    function battery() {
+      return `
+        <svg width="20" height="18" viewBox="0 0 20 18" fill="none" aria-hidden="true">
+          <rect x="2" y="5.5" width="14" height="7" rx="2" stroke="currentColor" stroke-width="1.4"/>
+          <rect x="3.7" y="7.2" width="9" height="3.6" rx="1" fill="currentColor"/>
+          <path d="M17.8 8v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      `;
+    }
+
+    function trayStrip() {
+      return `
+        <div class="tray-item">${wifi()}</div>
+        <div class="tray-item">${volume()}</div>
+        <div class="tray-item">${battery()}</div>
+        <div class="tray-item active">${gauge(0.75, 19)}</div>
+        <div class="tray-item"><span class="chevron"></span></div>
+      `;
+    }
+
+    document.getElementById("darkTray").innerHTML = trayStrip();
+    document.getElementById("lightTray").innerHTML = trayStrip();
+  </script>
+</body>
+</html>

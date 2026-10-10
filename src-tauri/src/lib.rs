@@ -17,8 +17,10 @@ mod refresh_loop;
 mod service;
 mod settings;
 mod storage;
-#[cfg(any(not(target_os = "macos"), test))]
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
 mod tray_icon;
+#[cfg(target_os = "windows")]
+mod tray_icon_windows;
 mod tray_presentation;
 mod updates;
 mod webview_memory;
@@ -461,6 +463,27 @@ pub fn run() {
             }
             #[cfg(not(target_os = "linux"))]
             let _ = tray_installed;
+
+            #[cfg(target_os = "windows")]
+            if tray_installed {
+                let theme_app = app.handle().clone();
+                let theme_service = service.clone();
+                let theme_settings = settings.clone();
+                tray_icon_windows::spawn_theme_monitor(move |_| {
+                    let app = theme_app.clone();
+                    let callback_app = app.clone();
+                    let service = theme_service.clone();
+                    let settings = theme_settings.clone();
+                    let _ = app.run_on_main_thread(move || {
+                        tray_presentation::update(
+                            &callback_app,
+                            &service.state(),
+                            &settings.get(),
+                            settings.registry(),
+                        );
+                    });
+                });
+            }
 
             tray_presentation::update(
                 app.handle(),

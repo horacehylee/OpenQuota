@@ -1,7 +1,12 @@
+#[cfg(target_os = "windows")]
+use tauri::AppHandle;
+#[cfg(not(target_os = "windows"))]
 use tauri::{image::Image, AppHandle};
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
 use crate::tray_icon;
+#[cfg(target_os = "windows")]
+use crate::tray_icon_windows as tray_icon;
 use crate::{
     models::{
         AppSettings, MetricDefinition, MetricSource, MetricValue, MetricValueKind,
@@ -78,11 +83,22 @@ pub fn update(
     #[cfg(target_os = "linux")]
     let _ = tooltip;
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
         let icon = primary_gauge(&groups)
             .map(|gauge| tray_icon::render_gauge(gauge.display_fraction, gauge.remaining_fraction))
             .unwrap_or_else(mark_icon);
+        if tray.set_icon(Some(icon)).is_err() {
+            crate::app_warn!("tray", "tray icon update failed");
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        let light_theme = tray_icon::system_uses_light_theme();
+        let icon = primary_gauge(&groups)
+            .map(|gauge| tray_icon::render_gauge(gauge.remaining_fraction, light_theme))
+            .unwrap_or_else(|| tray_icon::render_gauge(0.0, light_theme));
         if tray.set_icon(Some(icon)).is_err() {
             crate::app_warn!("tray", "tray icon update failed");
         }
@@ -417,6 +433,7 @@ fn format_tokens(tokens: u64) -> String {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn mark_icon() -> Image<'static> {
     Image::from_bytes(include_bytes!("../icons/32x32.png"))
         .expect("bundled OpenQuota tray mark must be a valid PNG")
