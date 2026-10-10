@@ -7,7 +7,63 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 
-const dryRun = process.argv.includes('--dry-run');
+function parseArguments(argv) {
+  const options = { changes: [], dryRun: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === '--dry-run') {
+      options.dryRun = true;
+    } else if (argv[index] === '--changes') {
+      const change = argv[index + 1]?.trim();
+      if (!change) {
+        console.error('--changes requires a release change description.');
+        process.exit(1);
+      }
+      options.changes.push(change);
+      index += 1;
+    } else {
+      console.error(`Unknown argument: ${argv[index]}`);
+      console.error(
+        'Usage: node scripts/release-portable.js --changes "..." [--changes "..."] [--dry-run]',
+      );
+      process.exit(1);
+    }
+  }
+
+  if (options.changes.length === 0) {
+    console.error('Provide at least one GitHub release change with --changes "..."');
+    process.exit(1);
+  }
+  return options;
+}
+
+function latestTag() {
+  const result = spawnSync('git', ['describe', '--tags', '--abbrev=0'], { encoding: 'utf8' });
+  return result.status === 0 ? result.stdout.trim() : null;
+}
+
+function showChangeSummary(previousTag) {
+  if (!previousTag) {
+    console.log('No previous tag found; skipping the change summary.');
+    return;
+  }
+
+  console.log(`Changes since ${previousTag}:`);
+  run('git', ['log', '--oneline', '--no-decorate', `${previousTag}..HEAD`]);
+  run('git', ['diff', '--stat', `${previousTag}..HEAD`]);
+}
+
+function releaseNotes(changes, stamp) {
+  return [
+    "## What's Changed",
+    '',
+    ...changes.map((change) => `- ${change}`),
+    '',
+    `Standalone Windows build, built ${stamp} HKT. Requires WebView2 (preinstalled on ` +
+      'Windows 10/11). Settings stay in %APPDATA%\\Roaming\\io.github.deviffyy.openquota.',
+  ].join('\n');
+}
+
+const { changes, dryRun } = parseArguments(process.argv.slice(2));
 
 function run(command, args, useShell = false) {
   const result = spawnSync(command, args, { stdio: 'inherit', shell: useShell });
@@ -56,6 +112,9 @@ const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const stamp = hktStamp();
 const tag = `portable-${version}-${stamp}`;
 const exePath = 'src-tauri/target/release/openquota.exe';
+const notes = releaseNotes(changes, stamp);
+
+showChangeSummary(latestTag());
 
 console.log(`Building portable exe for ${tag}...`);
 // corepack/pnpm are .cmd shims on Windows, which spawnSync cannot exec
@@ -69,6 +128,7 @@ if (!existsSync(exePath)) {
 
 if (dryRun) {
   console.log(`Dry run: would tag ${tag} and publish ${exePath} to GitHub releases.`);
+  console.log(`\n${notes}`);
   process.exit(0);
 }
 
@@ -90,6 +150,5 @@ run(gh, [
   '--title',
   `OpenQuota ${version} portable (${stamp} HKT)`,
   '--notes',
-  `Standalone Windows build, built ${stamp} HKT. Requires WebView2 (preinstalled on ` +
-    'Windows 10/11). Settings stay in %APPDATA%\\Roaming\\io.github.deviffyy.openquota.',
+  notes,
 ]);

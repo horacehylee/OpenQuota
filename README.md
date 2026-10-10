@@ -133,11 +133,18 @@ Build, tag, and publish a portable release to GitHub in one step:
 
 ```sh
 corepack pnpm release            # add --dry-run to skip publishing
+corepack pnpm release --changes "Replace the dashboard spend ring." \
+  --changes "Use a monochrome Windows tray progress ring."
 ```
 
 The release tag follows `portable-<version>-<yyyyMMddHHmm>` in local time, so
 repeated builds of the same version stay distinguishable. Requires the GitHub
 CLI (`gh`) signed in with `gh auth login`.
+
+Each `--changes` value becomes a bullet in the release page's "What's Changed"
+section. Before building, the script prints the commits and file summary since
+the latest existing tag so the supplied wording can be reviewed against the
+actual release contents.
 
 Maintainers can review updater and optional native-signing requirements in
 [docs/releasing.md](docs/releasing.md).
