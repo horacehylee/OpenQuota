@@ -116,7 +116,7 @@ where
 {
     let mut light_theme = system_uses_light_theme();
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(Duration::from_secs(60 * 60));
         let current = system_uses_light_theme();
         if current != light_theme {
             light_theme = current;
