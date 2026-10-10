@@ -83,6 +83,16 @@ jobs:
       - name: Test Rust
         run: cargo test --manifest-path src-tauri/Cargo.toml --all-targets
 
+      - name: Smoke test CLI
+        shell: bash
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml --release --bin openquota-cli
+          export OPENQUOTA_DATA_DIR="${RUNNER_TEMP}/openquota-cli-smoke"
+          cli="src-tauri/target/release/openquota-cli"
+          if [ -e "${cli}.exe" ]; then cli="${cli}.exe"; fi
+          "$cli" --help
+          "$cli" providers --json
+
       - name: Test Windows Credential Manager integration
         if: runner.os == 'Windows'
         env:

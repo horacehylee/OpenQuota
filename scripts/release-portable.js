@@ -59,7 +59,8 @@ function releaseNotes(changes, stamp) {
     ...changes.map((change) => `- ${change}`),
     '',
     `Standalone Windows build, built ${stamp} HKT. Requires WebView2 (preinstalled on ` +
-      'Windows 10/11). Settings stay in %APPDATA%\\Roaming\\io.github.deviffyy.openquota.',
+      'Windows 10/11). Settings stay in %APPDATA%\\Roaming\\io.github.deviffyy.openquota. ' +
+      'Includes openquota-cli.exe for terminal and agent use.',
   ].join('\n');
 }
 
@@ -123,6 +124,7 @@ const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const stamp = hktStamp();
 const tag = `portable-${version}-${stamp}`;
 const exePath = 'src-tauri/target/release/openquota.exe';
+const cliPath = 'src-tauri/target/release/openquota-cli.exe';
 const notes = releaseNotes(changes, stamp);
 
 showChangeSummary(latestTag());
@@ -131,14 +133,24 @@ console.log(`Building portable exe for ${tag}...`);
 // corepack/pnpm are .cmd shims on Windows, which spawnSync cannot exec
 // directly; the build arguments contain no spaces, so the shell is safe here.
 run('corepack', ['pnpm', 'build:portable'], process.platform === 'win32');
+run('corepack', ['pnpm', 'build:cli'], process.platform === 'win32');
 
 if (!existsSync(exePath)) {
   console.error(`Build finished but ${exePath} is missing.`);
   process.exit(1);
 }
 
+if (!existsSync(cliPath)) {
+  console.error(`Build finished but ${cliPath} is missing.`);
+  process.exit(1);
+}
+
+run(cliPath, ['--help']);
+
 if (dryRun) {
-  console.log(`Dry run: would tag ${tag} and publish ${exePath} to GitHub releases.`);
+  console.log(
+    `Dry run: would tag ${tag} and publish ${exePath} and ${cliPath} to GitHub releases.`,
+  );
   console.log(`\n${notes}`);
   process.exit(0);
 }
@@ -159,6 +171,7 @@ run(gh, [
   'create',
   tag,
   exePath,
+  cliPath,
   '--repo',
   repository,
   '--title',

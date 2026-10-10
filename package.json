@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "vite build",
+    "build:cli": "cargo build --manifest-path src-tauri/Cargo.toml --release --bin openquota-cli",
+    "build:all": "pnpm build:portable && pnpm build:cli",
+    "install:cli": "node scripts/install-cli.js",
     "build:installer": "tauri build --bundles nsis",
     "build:portable": "tauri build --no-bundle",
     "build:linux": "tauri build --bundles deb,appimage",

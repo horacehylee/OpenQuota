@@ -21,7 +21,7 @@ pub mod test_http;
 pub mod zai;
 
 pub use detection::{detect_local_credentials, CredentialProbeResults, CredentialProbeStatus};
-pub use registry::ProviderRegistry;
+pub use registry::{ProviderRegistry, ProviderRegistryError};
 
 use crate::models::{ApiKeyStatus, ProviderDefinition, ProviderErrorKind, ProviderSnapshot};
 

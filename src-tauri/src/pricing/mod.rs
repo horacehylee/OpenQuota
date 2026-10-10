@@ -9,6 +9,7 @@ pub use catalog::PricingCatalog;
 pub use model_pricing::ModelPricing;
 pub use rates::{ModelRates, TokenBreakdown};
 pub use store::PricingStore;
+pub use store::PricingStoreError;
 pub use supplement::PricingSupplement;
 
 #[cfg(test)]
