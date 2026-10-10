@@ -108,6 +108,17 @@ function findGh() {
   process.exit(1);
 }
 
+function githubRepository() {
+  const result = spawnSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' });
+  const remote = result.stdout?.trim();
+  const match = remote?.match(/github\.com[/:](.+?)\/(.+?)(?:\.git)?$/i);
+  if (!match) {
+    console.error(`Could not resolve a GitHub repository from origin: ${remote ?? 'not found'}`);
+    process.exit(1);
+  }
+  return `${match[1]}/${match[2]}`;
+}
+
 const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
 const stamp = hktStamp();
 const tag = `portable-${version}-${stamp}`;
@@ -142,11 +153,14 @@ run('git', ['tag', tag]);
 run('git', ['push', 'origin', tag]);
 
 const gh = findGh();
+const repository = githubRepository();
 run(gh, [
   'release',
   'create',
   tag,
   exePath,
+  '--repo',
+  repository,
   '--title',
   `OpenQuota ${version} portable (${stamp} HKT)`,
   '--notes',
