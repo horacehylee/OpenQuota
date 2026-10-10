@@ -119,6 +119,16 @@ corepack pnpm build:linux                 # Linux
 corepack pnpm tauri build --bundles dmg   # macOS
 ```
 
+Build a portable Windows executable without installing it:
+
+```sh
+corepack pnpm build:portable
+```
+
+The standalone binary lands at `src-tauri/target/release/openquota.exe` and only
+requires the WebView2 runtime that ships with Windows 10 and 11. Settings still
+live in `%APPDATA%\Roaming\io.github.deviffyy.openquota`.
+
 Maintainers can review updater and optional native-signing requirements in
 [docs/releasing.md](docs/releasing.md).
 

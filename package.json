@@ -8,6 +8,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "vite build",
     "build:installer": "tauri build --bundles nsis",
+    "build:portable": "tauri build --no-bundle",
     "build:linux": "tauri build --bundles deb,appimage",
     "check": "svelte-check --tsconfig ./tsconfig.app.json",
     "test": "vitest run",
