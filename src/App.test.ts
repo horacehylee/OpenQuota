@@ -124,8 +124,11 @@ describe('OpenQuota dashboard', () => {
     );
     expect(screen.getByRole('progressbar', { name: 'Weekly used' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Total Spend' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('region', { name: 'Total Spend' })).getByText('$3.84 · 2.1M tokens'),
+    ).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Usage Trend' })).toBeInTheDocument();
-    expect(container.querySelector('.spend-ring__label')).toHaveAttribute(
+    expect(container.querySelector('.spend-total')).toHaveAttribute(
       'data-tooltip',
       '$3.84 · Estimated locally, so it may be off',
     );
@@ -545,14 +548,24 @@ describe('OpenQuota dashboard', () => {
     expect(within(totalSpend).getByText('million')).toBeInTheDocument();
     expect(within(totalSpend).getByText('2.1M')).toBeInTheDocument();
     expect(within(totalSpend).queryByText('No data')).not.toBeInTheDocument();
+    await fireEvent.click(within(totalSpend).getByRole('combobox', { name: 'Total Spend Metric' }));
+    await waitFor(() =>
+      expect(screen.getByRole('option', { name: 'Cost/MTok' })).toBeInTheDocument(),
+    );
+    await fireEvent.click(screen.getByRole('option', { name: 'Cost/MTok' }));
+    await waitFor(() => expect(totalSpend.querySelector('.spend-bar')).toBeNull());
+    expect(
+      within(totalSpend).getByText('No cost-per-token data for this period'),
+    ).toBeInTheDocument();
   });
 
   it('reveals On Demand metrics without losing their saved order', async () => {
     render(App);
     await screen.findByText('Plus');
-    expect(screen.queryByText('$3.84 · 2.1M tokens')).not.toBeInTheDocument();
+    const codexUsage = screen.getByRole('region', { name: 'Codex usage' });
+    expect(within(codexUsage).queryByText('$3.84 · 2.1M tokens')).not.toBeInTheDocument();
     await fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    expect(screen.getByText('$3.84 · 2.1M tokens')).toBeInTheDocument();
+    expect(within(codexUsage).getByText('$3.84 · 2.1M tokens')).toBeInTheDocument();
     await waitFor(() =>
       expect(mocks.invoke).toHaveBeenCalledWith('save_app_settings', expect.any(Object)),
     );
@@ -664,14 +677,14 @@ describe('OpenQuota dashboard', () => {
     expect(screen.getByRole('button', { name: 'Dashboard, opens in browser' })).toBeInTheDocument();
   });
 
-  it('renders the Total Spend ring as separated rounded SVG sectors', async () => {
+  it('renders the Total Spend breakdown as a stacked provider bar', async () => {
     render(App);
     expect(await screen.findByRole('region', { name: 'Total Spend' })).toBeInTheDocument();
-    await waitFor(() => expect(document.querySelector('.spend-ring svg')).not.toBeNull());
-    const segment = document.querySelector('.spend-ring__segment');
-    expect(segment?.tagName).toBe('path');
-    expect(segment?.getAttribute('d')).toMatch(/^M .* A .* Q .* Z$/);
-    expect(document.querySelector('.spend-ring__track')).toBeNull();
+    const bar = document.querySelector('.spend-bar');
+    expect(bar).not.toBeNull();
+    const segment = bar?.querySelector('span');
+    expect(segment).not.toBeNull();
+    expect(segment?.getAttribute('title')).toContain('Codex');
     expect(document.querySelector('.period-switcher__selection')).not.toBeNull();
   });
 

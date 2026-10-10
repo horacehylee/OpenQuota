@@ -65,6 +65,15 @@ export function formatSpendValue(
   return metric === 'costPerMillion' ? `${dollars}/MTok` : dollars;
 }
 
+export function formatSpendReading(dollars: number, tokens: number) {
+  return `${formatMetricNumber(dollars, 'dollars', 'row')} · ${formatMetricValue(
+    tokens,
+    'count',
+    'row',
+    'tokens',
+  )}`;
+}
+
 export function totalSpendRingCenter(value: number, metric: AppSettings['totalSpendMetric']) {
   if (metric === 'cost') {
     return { primary: formatMetricNumber(value, 'dollars', 'tray'), unit: 'dollars' };

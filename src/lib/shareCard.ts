@@ -2,6 +2,7 @@ import type { ProviderCatalogIndex } from './metrics';
 import {
   formatMetricNumber,
   formatMetricValue,
+  formatSpendReading,
   formatSpendValue,
   totalSpendRingCenter,
 } from './metricFormat';
@@ -12,8 +13,7 @@ import {
   providerIconPath,
   providerIconViewBox,
 } from './providerIconPaths';
-import { fillRingSector, spendRingArcs } from './spendRing';
-import type { SpendProjection } from './totalSpend';
+import { spendBarSegments, type SpendProjection } from './totalSpend';
 import type {
   AppSettings,
   DailyUsage,
@@ -41,16 +41,14 @@ export const TOTAL_SPEND_GEOMETRY = {
   cardPaddingY: 12,
   switcherHeight: 27,
   bodyGap: 12,
-  ringDiameter: 104,
-  innerRadiusRatio: 0.618,
-  gapWidth: 1.6,
-  cornerRadius: 3,
-  legendGap: 18,
+  legendGap: 8,
+  totalLineHeight: 16,
+  barHeight: 8,
   legendRowHeight: 22,
   periodFontSize: 11,
   legendFontSize: 12,
-  centerFontSize: 13,
-  centerUnitFontSize: 9,
+  totalFontSize: 13,
+  totalUnitFontSize: 9,
 } as const;
 export const TOTAL_SPEND_OUTER_PADDING = TOTAL_SPEND_GEOMETRY.outerPadding;
 
@@ -211,12 +209,17 @@ export function providerShareCardHeight(rows: ShareRow[]) {
   return OUTER_PADDING + HEADER_HEIGHT + CONTENT_GAP + cardHeight + OUTER_PADDING;
 }
 
-export function totalSpendShareCardHeight() {
+export function totalSpendShareCardHeight(rowCount: number) {
+  const bodyHeight =
+    TOTAL_SPEND_GEOMETRY.totalLineHeight +
+    TOTAL_SPEND_GEOMETRY.legendGap * 2 +
+    TOTAL_SPEND_GEOMETRY.barHeight +
+    Math.max(rowCount, 0) * TOTAL_SPEND_GEOMETRY.legendRowHeight;
   const cardHeight =
     TOTAL_SPEND_GEOMETRY.cardPaddingY +
     TOTAL_SPEND_GEOMETRY.switcherHeight +
     TOTAL_SPEND_GEOMETRY.bodyGap +
-    TOTAL_SPEND_GEOMETRY.ringDiameter +
+    bodyHeight +
     TOTAL_SPEND_GEOMETRY.cardPaddingY;
   return TOTAL_SPEND_OUTER_PADDING + cardHeight + TOTAL_SPEND_OUTER_PADDING;
 }
@@ -272,7 +275,7 @@ export function renderTotalSpendShareCard(
   catalog: ProviderCatalogIndex,
   options: TotalSpendShareCardOptions,
 ) {
-  const height = totalSpendShareCardHeight();
+  const height = totalSpendShareCardHeight(options.projection.slices.length || 1);
   const width = TOTAL_SPEND_GEOMETRY.width;
   const { canvas, context } = createCanvas(width, height);
   const palette = canvasPalette();
@@ -603,40 +606,62 @@ function drawSpendBody(
         : metric === 'costPerMillion'
           ? 'No cost-per-token data for this period'
           : 'No cost data for this period';
-    context.fillText(empty, canvasWidth / 2, top + TOTAL_SPEND_GEOMETRY.ringDiameter / 2 + 4);
+    context.fillText(empty, canvasWidth / 2, top + TOTAL_SPEND_GEOMETRY.totalLineHeight + 14);
     context.textAlign = 'left';
     return;
   }
 
-  const ringOuterRadius = TOTAL_SPEND_GEOMETRY.ringDiameter / 2;
-  const ringLeft = outerPadding + TOTAL_SPEND_GEOMETRY.cardPaddingX;
-  const centerX = ringLeft + ringOuterRadius;
-  const centerY = top + ringOuterRadius;
-  spendRingArcs(projection.slices).forEach((arc) => {
-    context.fillStyle = palette.provider(arc.id);
-    fillRingSector(context, arc, TOTAL_SPEND_GEOMETRY, ringLeft, top);
-  });
-
+  const left = outerPadding + TOTAL_SPEND_GEOMETRY.cardPaddingX;
+  const right = canvasWidth - outerPadding - TOTAL_SPEND_GEOMETRY.cardPaddingX;
   const center = totalSpendRingCenter(projection.centerValue, metric);
+  const totalBaseline = top + TOTAL_SPEND_GEOMETRY.totalLineHeight - 3;
   context.fillStyle = palette.text;
-  context.font = `600 ${TOTAL_SPEND_GEOMETRY.centerFontSize}px system-ui`;
-  context.textAlign = 'center';
-  context.fillText(center.primary, centerX, centerY - 1);
+  context.font = `600 ${TOTAL_SPEND_GEOMETRY.totalFontSize}px system-ui`;
+  context.fillText(center.primary, left, totalBaseline);
+  const primaryWidth = context.measureText(center.primary).width;
   context.fillStyle = palette.secondary;
-  context.font = `600 ${TOTAL_SPEND_GEOMETRY.centerUnitFontSize}px system-ui`;
-  context.fillText(center.unit, centerX, centerY + 13);
+  context.font = `600 ${TOTAL_SPEND_GEOMETRY.totalUnitFontSize}px system-ui`;
+  context.fillText(center.unit, left + primaryWidth + 5, totalBaseline);
   context.textAlign = 'left';
 
-  const legendLeft =
-    outerPadding +
-    TOTAL_SPEND_GEOMETRY.cardPaddingX +
-    TOTAL_SPEND_GEOMETRY.ringDiameter +
-    TOTAL_SPEND_GEOMETRY.legendGap;
-  const legendRight = canvasWidth - outerPadding - TOTAL_SPEND_GEOMETRY.cardPaddingX;
+  const legendLeft = left;
+  const legendRight = right;
   const rowHeight = TOTAL_SPEND_GEOMETRY.legendRowHeight;
-  const legendTop =
-    top + (TOTAL_SPEND_GEOMETRY.ringDiameter - projection.slices.length * rowHeight) / 2;
+  const barSegments = spendBarSegments(projection.slices, metric);
+  let legendTop = top + TOTAL_SPEND_GEOMETRY.totalLineHeight + TOTAL_SPEND_GEOMETRY.legendGap;
+  const barWidth = right - left;
+  const radius = TOTAL_SPEND_GEOMETRY.barHeight / 2;
+  drawRoundedRect(
+    context,
+    left,
+    legendTop,
+    barWidth,
+    TOTAL_SPEND_GEOMETRY.barHeight,
+    radius,
+    palette.track,
+  );
+  context.save();
+  context.beginPath();
+  context.roundRect(left, legendTop, barWidth, TOTAL_SPEND_GEOMETRY.barHeight, radius);
+  context.clip();
+  let cursor = 0;
+  barSegments.forEach((segment) => {
+    const next = cursor + segment.share;
+    context.fillStyle = palette.provider(segment.id);
+    context.fillRect(
+      left + cursor * barWidth,
+      legendTop,
+      (next - cursor) * barWidth + 0.5,
+      TOTAL_SPEND_GEOMETRY.barHeight,
+    );
+    cursor = next;
+  });
+  context.restore();
+  legendTop += TOTAL_SPEND_GEOMETRY.barHeight + TOTAL_SPEND_GEOMETRY.legendGap;
   projection.slices.forEach((slice, index) => {
+    const costReading = metric === 'cost';
+    const valueWidth = costReading ? 95 : 72;
+    const nameWidth = legendRight - legendLeft - 15 - valueWidth - 8;
     const baseline = legendTop + index * rowHeight + 15;
     context.fillStyle = palette.provider(slice.id);
     context.beginPath();
@@ -649,12 +674,20 @@ function drawSpendBody(
       catalog.displayName(slice.id, options.providerNames),
       legendLeft + 15,
       baseline,
-      62,
+      nameWidth,
     );
     context.fillStyle = palette.secondary;
     context.font = `600 ${TOTAL_SPEND_GEOMETRY.legendFontSize}px system-ui`;
     context.textAlign = 'right';
-    fitTextRight(context, formatSpendValue(slice.value, metric), legendRight, baseline, 72);
+    fitTextRight(
+      context,
+      costReading
+        ? formatSpendReading(slice.value, slice.period.tokens)
+        : formatSpendValue(slice.value, metric),
+      legendRight,
+      baseline,
+      valueWidth,
+    );
     context.textAlign = 'left';
   });
 }

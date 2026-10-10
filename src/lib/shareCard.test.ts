@@ -299,23 +299,29 @@ describe('share card layout', () => {
     expect(TOTAL_SPEND_GEOMETRY).toMatchObject({
       width: 320,
       switcherHeight: 27,
-      ringDiameter: 104,
-      legendGap: 18,
+      barHeight: 8,
+      legendGap: 8,
     });
-    expect(totalSpendShareCardHeight()).toBe(187);
+    expect(totalSpendShareCardHeight(2)).toBe(167);
+    expect(totalSpendShareCardHeight(1)).toBe(145);
   });
 
   it('shares the same geometry source with the live Total Spend card', () => {
     expect(totalSpendSource).toContain("import { TOTAL_SPEND_GEOMETRY } from './shareCard';");
     expect(totalSpendSource).toContain('--total-switcher-height:');
-    expect(totalSpendSource).toContain('--total-ring-size:');
-    expect(totalSpendSource).toContain('ringSectorPath(segment, TOTAL_SPEND_GEOMETRY)');
+    expect(totalSpendSource).toContain('--total-bar-height:');
+    expect(totalSpendSource).toContain(
+      'spendBarSegments(projection.slices, settings.totalSpendMetric)',
+    );
   });
 
   it('does not add a title, selected-period caption, or marketing footer to Total Spend', () => {
     const drawn: string[] = [];
     const context = {
       scale: vi.fn(),
+      save: vi.fn(),
+      restore: vi.fn(),
+      clip: vi.fn(),
       fillRect: vi.fn(),
       beginPath: vi.fn(),
       roundRect: vi.fn(),
@@ -363,7 +369,7 @@ describe('share card layout', () => {
     });
 
     expect(canvas.width).toBe(TOTAL_SPEND_GEOMETRY.width * SHARE_CARD_SCALE);
-    expect(canvas.height).toBe(totalSpendShareCardHeight() * SHARE_CARD_SCALE);
+    expect(canvas.height).toBe(totalSpendShareCardHeight(1) * SHARE_CARD_SCALE);
     expect(drawn).toEqual(
       expect.arrayContaining(['Today', 'Yesterday', '30 Days', 'Codex', 'dollars']),
     );

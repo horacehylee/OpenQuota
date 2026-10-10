@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatMetricNumber,
   formatMetricValue,
+  formatSpendReading,
   formatSpendValue,
   totalSpendRingCenter,
 } from './metricFormat';
@@ -27,5 +28,10 @@ describe('shared metric formatting', () => {
       primary: '461.8',
       unit: 'million',
     });
+  });
+
+  it('formats spend readings as dollars plus tokens', () => {
+    expect(formatSpendReading(3.84, 2_100_000)).toBe('$3.84 · 2.1M tokens');
+    expect(formatSpendReading(2059.07, 1_506_025_363)).toBe('$2.1K · 1.5B tokens');
   });
 });

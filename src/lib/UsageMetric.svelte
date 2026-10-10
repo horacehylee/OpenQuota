@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
-  import { formatMetricNumber, formatMetricValue } from './metricFormat';
+  import { formatMetricNumber, formatMetricValue, formatSpendReading } from './metricFormat';
   import ModelUsageDetail from './ModelUsageDetail.svelte';
   import type { UsagePeriod } from './types';
 
@@ -17,9 +17,9 @@
 
   function reading(value: UsagePeriod | null) {
     if (!value) return 'No data';
-    const tokens = formatMetricValue(value.tokens, 'count', 'row', 'tokens');
-    if (value.estimatedCostUsd === null) return tokens;
-    return `${formatMetricNumber(value.estimatedCostUsd, 'dollars', 'row')} · ${tokens}`;
+    if (value.estimatedCostUsd === null)
+      return formatMetricValue(value.tokens, 'count', 'row', 'tokens');
+    return formatSpendReading(value.estimatedCostUsd, value.tokens);
   }
   function valueTooltip(value: UsagePeriod | null) {
     if (!value) return undefined;

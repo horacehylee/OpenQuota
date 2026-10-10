@@ -93,9 +93,7 @@ describe('popover geometry contract', () => {
     expect(css).toMatch(
       /:root\[data-density='compact'\] \.screen-cross-link\s*{[^}]*min-height: 42px;/s,
     );
-    expect(css).toMatch(
-      /:root\[data-density='compact'\] \.spend-ring\s*{[^}]*width: 88px;[^}]*height: 88px;/s,
-    );
+    expect(css).toMatch(/\.spend-bar\s*{[^}]*height: var\(--total-bar-height\);/s);
   });
 
   it('keeps drag depth on painted surfaces instead of darkening transparent headers', () => {

@@ -18,6 +18,31 @@ export interface SpendProjection {
   estimateComplete: boolean;
 }
 
+export interface SpendBarSegment {
+  id: string;
+  share: number;
+}
+
+const MINIMUM_BAR_SHARE = 0.025;
+
+export function spendBarSegments(
+  slices: SpendSlice[],
+  metric: AppSettings['totalSpendMetric'],
+): SpendBarSegment[] {
+  const total = slices.reduce(
+    (sum, slice) =>
+      sum + (metric === 'costPerMillion' ? (slice.period.estimatedCostUsd ?? 0) : slice.value),
+    0,
+  );
+  if (total <= 0) return [];
+  const floored = slices.map((slice) => {
+    const weight = metric === 'costPerMillion' ? (slice.period.estimatedCostUsd ?? 0) : slice.value;
+    return Math.max(weight / total, MINIMUM_BAR_SHARE);
+  });
+  const flooredTotal = floored.reduce((sum, share) => sum + share, 0);
+  return slices.map((slice, index) => ({ id: slice.id, share: floored[index] / flooredTotal }));
+}
+
 export function selectedPeriod(
   history: UsageHistory,
   selection: AppSettings['totalSpendPeriod'],

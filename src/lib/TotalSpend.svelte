@@ -1,12 +1,21 @@
 <script lang="ts">
   import { onDestroy } from 'svelte';
   import Icon from './Icon.svelte';
-  import { formatSpendValue, totalSpendRingCenter } from './metricFormat';
+  import {
+    formatMetricValue,
+    formatSpendReading,
+    formatSpendValue,
+    totalSpendRingCenter,
+  } from './metricFormat';
   import SelectMenu from './SelectMenu.svelte';
   import type { ProviderCatalogIndex } from './metrics';
   import { TOTAL_SPEND_GEOMETRY } from './shareCard';
-  import { ringSectorPath, spendRingArcs } from './spendRing';
-  import { emptySpendMessage, projectSpend, type SpendProjection } from './totalSpend';
+  import {
+    emptySpendMessage,
+    projectSpend,
+    spendBarSegments,
+    type SpendProjection,
+  } from './totalSpend';
   import { providerFamily } from './providerIconPaths';
   import type { AppSettings, UsageHistory } from './types';
 
@@ -23,7 +32,7 @@
     projectSpend(providers, settings.totalSpendPeriod, settings.totalSpendMetric),
   );
   const providerNames = $derived(providers.map((provider) => providerDisplayName(provider.id)));
-  const ringSegments = $derived(spendRingArcs(projection.slices));
+  const barSegments = $derived(spendBarSegments(projection.slices, settings.totalSpendMetric));
   const periodIndex = $derived(
     settings.totalSpendPeriod === 'today' ? 0 : settings.totalSpendPeriod === 'yesterday' ? 1 : 2,
   );
@@ -34,13 +43,22 @@
     if (shareTimer) clearTimeout(shareTimer);
   });
 
-  function display(value: number | null) {
+  function display(value: number | null, tokens: number) {
     if (value === null) return '—';
+    if (settings.totalSpendMetric === 'cost') return formatSpendReading(value, tokens);
     return formatSpendValue(value, settings.totalSpendMetric);
   }
-  function ringCenter(value: number | null) {
+  function totalParts(value: number | null) {
     if (value === null) return { primary: '—', unit: '' };
     return totalSpendRingCenter(value, settings.totalSpendMetric);
+  }
+  function segmentTitle(id: string) {
+    const slice = projection.slices.find((item) => item.id === id);
+    if (!slice) return undefined;
+    const value = formatSpendValue(slice.value, settings.totalSpendMetric, 'full');
+    if (settings.totalSpendMetric !== 'cost') return `${providerDisplayName(id)}: ${value}`;
+    const tokens = formatMetricValue(slice.period.tokens, 'count', 'full', 'tokens');
+    return `${providerDisplayName(id)}: ${value} · ${tokens}`;
   }
   function centerTooltip(value: number | null) {
     if (value === null) return undefined;
@@ -70,7 +88,7 @@
   class="total-spend-section"
   aria-label="Total Spend"
   data-total-spend
-  style={`--total-card-padding-x:${TOTAL_SPEND_GEOMETRY.cardPaddingX}px;--total-card-padding-y:${TOTAL_SPEND_GEOMETRY.cardPaddingY}px;--total-switcher-height:${TOTAL_SPEND_GEOMETRY.switcherHeight}px;--total-period-size:${TOTAL_SPEND_GEOMETRY.periodFontSize}px;--total-body-gap:${TOTAL_SPEND_GEOMETRY.bodyGap}px;--total-legend-gap:${TOTAL_SPEND_GEOMETRY.legendGap}px;--total-ring-size:${TOTAL_SPEND_GEOMETRY.ringDiameter}px;--total-center-size:${TOTAL_SPEND_GEOMETRY.centerFontSize}px;--total-center-unit-size:${TOTAL_SPEND_GEOMETRY.centerUnitFontSize}px;--total-legend-size:${TOTAL_SPEND_GEOMETRY.legendFontSize}px;`}
+  style={`--total-card-padding-x:${TOTAL_SPEND_GEOMETRY.cardPaddingX}px;--total-card-padding-y:${TOTAL_SPEND_GEOMETRY.cardPaddingY}px;--total-switcher-height:${TOTAL_SPEND_GEOMETRY.switcherHeight}px;--total-period-size:${TOTAL_SPEND_GEOMETRY.periodFontSize}px;--total-body-gap:${TOTAL_SPEND_GEOMETRY.bodyGap}px;--total-legend-gap:${TOTAL_SPEND_GEOMETRY.legendGap}px;--total-bar-height:${TOTAL_SPEND_GEOMETRY.barHeight}px;--total-line-height:${TOTAL_SPEND_GEOMETRY.totalLineHeight}px;--total-value-size:${TOTAL_SPEND_GEOMETRY.totalFontSize}px;--total-value-unit-size:${TOTAL_SPEND_GEOMETRY.totalUnitFontSize}px;--total-legend-size:${TOTAL_SPEND_GEOMETRY.legendFontSize}px;`}
 >
   <div class="total-card__header">
     <div class="total-card__title">
@@ -123,33 +141,28 @@
       </div>
     {:else}
       <div class="total-card__body">
-        <div class="spend-ring">
-          <svg
-            viewBox={`0 0 ${TOTAL_SPEND_GEOMETRY.ringDiameter} ${TOTAL_SPEND_GEOMETRY.ringDiameter}`}
-            shape-rendering="geometricPrecision"
-            aria-hidden="true"
+        <div class="spend-total" data-tooltip={centerTooltip(projection.centerValue)}>
+          <strong>{totalParts(projection.centerValue).primary}</strong><span
+            >{totalParts(projection.centerValue).unit}</span
           >
-            {#each ringSegments as segment (segment.id)}
-              <path
-                class="spend-ring__segment"
-                d={ringSectorPath(segment, TOTAL_SPEND_GEOMETRY)}
-                style={`--segment-color: var(--provider-${providerFamily(segment.id)}, var(--provider))`}
-              />
-            {/each}
-          </svg>
-          <div class="spend-ring__label" data-tooltip={centerTooltip(projection.centerValue)}>
-            <strong>{ringCenter(projection.centerValue).primary}</strong><span
-              >{ringCenter(projection.centerValue).unit}</span
-            >
-          </div>
         </div>
+        {#if barSegments.length}
+          <div class="spend-bar" role="img" aria-label="Spend share by provider">
+            {#each barSegments as segment (segment.id)}
+              <span
+                style={`flex-grow:${segment.share};background:var(--provider-${providerFamily(segment.id)}, var(--provider))`}
+                title={segmentTitle(segment.id)}
+              ></span>
+            {/each}
+          </div>
+        {/if}
         <div class="spend-legend">
           {#each projection.slices as provider (provider.id)}
             <span
               ><i
                 style={`background: var(--provider-${providerFamily(provider.id)}, var(--provider))`}
               ></i>{providerDisplayName(provider.id)}</span
-            ><strong>{display(provider.value)}</strong>
+            ><strong>{display(provider.value, provider.period.tokens)}</strong>
           {/each}
         </div>
       </div>
@@ -218,45 +231,39 @@
       padding-top: 10px;
     }
 
-    .spend-ring {
-      position: relative;
-      display: grid;
-      width: 74px;
-      height: 74px;
-      flex: 0 0 74px;
-      place-items: center;
-    }
-
-    .spend-ring svg {
-      position: absolute;
-      width: 100%;
-      height: 100%;
-      overflow: visible;
-    }
-
-    .spend-ring__segment {
-      fill: var(--segment-color);
-      transition: fill 160ms ease;
-    }
-
-    .spend-ring__label {
-      position: relative;
-      z-index: 1;
+    .spend-total {
       display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
+      align-items: baseline;
+      gap: 4px;
     }
 
-    .spend-ring strong {
-      max-width: 48px;
+    .spend-total strong {
       overflow: hidden;
-      font-size: 13px;
+      font-size: var(--total-value-size);
+      font-weight: 600;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .spend-ring span,
+    .spend-total span {
+      color: var(--secondary);
+      font-size: var(--total-value-unit-size);
+    }
+
+    .spend-bar {
+      display: flex;
+      width: 100%;
+      height: var(--total-bar-height);
+      border-radius: 999px;
+      background: var(--meter-track);
+      overflow: hidden;
+    }
+
+    .spend-bar span {
+      flex-basis: 0;
+      min-width: 2px;
+    }
+
     .spend-legend small {
       color: var(--secondary);
       font-size: 8px;
@@ -402,24 +409,10 @@
     }
 
     .total-card__body {
+      flex-direction: column;
+      align-items: stretch;
       gap: var(--total-legend-gap);
       padding-top: var(--total-body-gap);
-    }
-
-    .spend-ring {
-      width: var(--total-ring-size);
-      height: var(--total-ring-size);
-      flex-basis: var(--total-ring-size);
-      padding: 0;
-    }
-
-    .spend-ring strong {
-      max-width: 68px;
-      font-size: var(--total-center-size);
-    }
-
-    .spend-ring span {
-      font-size: var(--total-center-unit-size);
     }
 
     .spend-legend {
@@ -464,16 +457,6 @@
     :root[data-density='compact'] .total-card__body {
       gap: 14px;
       padding-top: 8px;
-    }
-
-    :root[data-density='compact'] .spend-ring {
-      width: 88px;
-      height: 88px;
-      flex-basis: 88px;
-    }
-
-    :root[data-density='compact'] .spend-ring strong {
-      max-width: 58px;
     }
 
     :root[data-density='compact'] .total-card__empty {
