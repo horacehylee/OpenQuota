@@ -62,11 +62,9 @@ pub fn map_quota(body: &Value) -> Result<Vec<QuotaWindow>, ZaiError> {
 
     let mut session = None;
     let mut weekly = None;
-    for entry in limits
-        .iter()
-        .copied()
-        .filter(|entry| matches_limit(entry, "TOKENS_LIMIT"))
-    {
+    for entry in limits.iter().copied().filter(|entry| {
+        matches_limit(entry, "TOKENS_LIMIT") || matches_limit(entry, "CREDIT_LIMIT")
+    }) {
         let Some(window) = classify_token_window(entry)? else {
             continue;
         };
@@ -257,6 +255,34 @@ mod tests {
         assert_eq!(web.period_seconds, MONTHLY_PERIOD_SECONDS);
         assert!(!web.estimated);
         assert_eq!(web.source_note, None);
+    }
+
+    #[test]
+    fn credit_limit_entries_map_to_session_weekly_and_resets() {
+        let mapped = map_quota(&json!({"data":{"limits":[
+            {"type":"CREDIT_LIMIT","unit":3,"number":5,"percentage":21,
+             "nextResetTime":1791650751677i64},
+            {"type":"CREDIT_LIMIT","unit":6,"number":1,"percentage":4,
+             "nextResetTime":1792230192983i64}
+        ]}}))
+        .unwrap();
+
+        let by_id = |id: &str| {
+            mapped
+                .iter()
+                .find(|quota| quota.id == id)
+                .unwrap_or_else(|| panic!("missing {id}"))
+        };
+        assert_eq!(by_id("session").used_percent, 21.0);
+        assert_eq!(by_id("weekly").used_percent, 4.0);
+        assert_eq!(
+            by_id("session").resets_at,
+            Utc.timestamp_millis_opt(1_791_650_751_677).single()
+        );
+        assert_eq!(
+            by_id("weekly").resets_at,
+            Utc.timestamp_millis_opt(1_792_230_192_983).single()
+        );
     }
 
     #[test]
