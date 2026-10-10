@@ -7,6 +7,7 @@ use super::ZaiError;
 
 const SUBSCRIPTION_URL: &str = "https://api.z.ai/api/biz/subscription/list";
 const QUOTA_URL: &str = "https://api.z.ai/api/monitor/usage/quota/limit";
+const USAGE_DETAIL_URL: &str = "https://api.z.ai/api/monitor/credit-usage/usage-detail";
 
 #[derive(Debug)]
 pub struct ZaiResponse {
@@ -18,16 +19,23 @@ pub struct ZaiClient {
     client: Client,
     subscription_url: String,
     quota_url: String,
+    usage_detail_url: String,
 }
 
 impl ZaiClient {
     pub fn new() -> Result<Self, ZaiError> {
-        Self::with_endpoints(SUBSCRIPTION_URL, QUOTA_URL, Duration::from_secs(15))
+        Self::with_endpoints(
+            SUBSCRIPTION_URL,
+            QUOTA_URL,
+            USAGE_DETAIL_URL,
+            Duration::from_secs(15),
+        )
     }
 
     fn with_endpoints(
         subscription_url: &str,
         quota_url: &str,
+        usage_detail_url: &str,
         timeout: Duration,
     ) -> Result<Self, ZaiError> {
         let client = Client::builder()
@@ -40,6 +48,7 @@ impl ZaiClient {
             client,
             subscription_url: subscription_url.to_owned(),
             quota_url: quota_url.to_owned(),
+            usage_detail_url: usage_detail_url.to_owned(),
         })
     }
 
@@ -49,6 +58,42 @@ impl ZaiClient {
 
     pub fn fetch_subscription(&self, api_key: &str) -> Result<ZaiResponse, ZaiError> {
         self.fetch(&self.subscription_url, api_key, "subscription")
+    }
+
+    pub fn fetch_usage_detail(
+        &self,
+        api_key: &str,
+        start_time: &str,
+        end_time: &str,
+    ) -> Result<ZaiResponse, ZaiError> {
+        // Z.ai accepts form-style `+` for the space in `YYYY-MM-DD HH:MM:SS`.
+        let url = format!(
+            "{}?startTime={}&endTime={}&usageType=MODEL&type=1",
+            self.usage_detail_url,
+            start_time.replace(' ', "+"),
+            end_time.replace(' ', "+"),
+        );
+        let started = std::time::Instant::now();
+        let response = self
+            .client
+            .get(&url)
+            .bearer_auth(api_key)
+            .header("Accept", "application/json")
+            .send()
+            .map_err(|_| {
+                crate::app_warn!("http", "zai usage-detail request failed (transport)");
+                ZaiError::ConnectionFailed
+            })?;
+        let status = response.status();
+        crate::app_debug!(
+            "http",
+            "zai usage-detail HTTP {} ({}ms)",
+            status.as_u16(),
+            started.elapsed().as_millis()
+        );
+        let text = response.text().map_err(|_| ZaiError::InvalidResponse)?;
+        let body = serde_json::from_str(&text).unwrap_or(Value::Null);
+        Ok(ZaiResponse { status, body })
     }
 
     fn fetch(&self, url: &str, api_key: &str, endpoint: &str) -> Result<ZaiResponse, ZaiError> {
@@ -79,6 +124,6 @@ impl ZaiClient {
 #[cfg(test)]
 impl ZaiClient {
     pub fn for_test(subscription_url: &str, quota_url: &str, timeout: Duration) -> Self {
-        Self::with_endpoints(subscription_url, quota_url, timeout).unwrap()
+        Self::with_endpoints(subscription_url, quota_url, "http://127.0.0.1:1", timeout).unwrap()
     }
 }

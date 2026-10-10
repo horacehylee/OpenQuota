@@ -1,22 +1,25 @@
 mod auth;
 mod client;
 mod mapper;
+mod usage;
 
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{Days, Local, Utc};
 use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::models::{
     ApiKeyStatus, MetricDefinition, MetricSection, ProviderDefinition, ProviderErrorKind,
-    ProviderLink, ProviderSnapshot, UsageHistory,
+    ProviderLink, ProviderSnapshot, UsageHistory, UsagePeriodSelection,
 };
+use crate::pricing::PricingStore;
 
 use self::{
     auth::ZaiAuthStore,
     client::{ZaiClient, ZaiResponse},
     mapper::{is_no_coding_plan, map_usage},
+    usage::{map_usage_detail, USAGE_SOURCE_NOTE},
 };
 
 use super::{ProviderError, UsageProvider};
@@ -27,7 +30,7 @@ pub(crate) fn definition() -> ProviderDefinition {
         display_name: "Z.ai".into(),
         short_name: "Z".into(),
         fallback_enabled: false,
-        local_usage_source_note: None,
+        local_usage_source_note: Some(USAGE_SOURCE_NOTE.into()),
         links: vec![
             ProviderLink::new(
                 "Dashboard",
@@ -65,6 +68,28 @@ pub(crate) fn definition() -> ProviderDefinition {
                 MetricSection::OnDemand,
                 false,
                 "Search",
+            ),
+            MetricDefinition::trend("zai.trend"),
+            MetricDefinition::usage(
+                "zai.today",
+                "Today",
+                UsagePeriodSelection::Today,
+                MetricSection::OnDemand,
+                "T",
+            ),
+            MetricDefinition::usage(
+                "zai.yesterday",
+                "Yesterday",
+                UsagePeriodSelection::Yesterday,
+                MetricSection::OnDemand,
+                "Y",
+            ),
+            MetricDefinition::usage(
+                "zai.last30",
+                "Last 30 Days",
+                UsagePeriodSelection::Last30Days,
+                MetricSection::OnDemand,
+                "30",
             ),
         ],
     }
@@ -110,22 +135,56 @@ impl From<ZaiError> for ProviderError {
 pub struct ZaiProvider {
     auth: ZaiAuthStore,
     client: Arc<ZaiClient>,
+    pricing: Arc<PricingStore>,
 }
 
 impl ZaiProvider {
-    pub fn new() -> Result<Self, ProviderError> {
+    pub fn new(pricing: Arc<PricingStore>) -> Result<Self, ProviderError> {
         Ok(Self {
             auth: ZaiAuthStore::new(),
             client: Arc::new(ZaiClient::new().map_err(ProviderError::from)?),
+            pricing,
         })
     }
 
     #[cfg(test)]
-    fn with_dependencies(auth: ZaiAuthStore, client: ZaiClient) -> Self {
+    fn with_dependencies(
+        auth: ZaiAuthStore,
+        client: ZaiClient,
+        pricing: Arc<PricingStore>,
+    ) -> Self {
         Self {
             auth,
             client: Arc::new(client),
+            pricing,
         }
+    }
+
+    /// Usage history is best-effort: quota metrics must survive a failed
+    /// or unparsable usage-detail call.
+    fn fetch_usage_history(&self, api_key: &str) -> UsageHistory {
+        let end = Local::now();
+        let Some(start_date) = end.date_naive().checked_sub_days(Days::new(29)) else {
+            return UsageHistory::default();
+        };
+        let response = self
+            .client
+            .fetch_usage_detail(
+                api_key,
+                &format!("{start_date} 00:00:00"),
+                &end.format("%Y-%m-%d %H:%M:%S").to_string(),
+            )
+            .ok();
+        let Some(response) = response.filter(|response| response.status.is_success()) else {
+            return UsageHistory::default();
+        };
+        map_usage_detail(
+            &response.body,
+            start_date,
+            Utc::now(),
+            &self.pricing.current(),
+        )
+        .unwrap_or_default()
     }
 
     fn refresh_snapshot(&self, api_key: &str) -> Result<ProviderSnapshot, ProviderError> {
@@ -149,7 +208,7 @@ impl ZaiProvider {
             value_metrics: Vec::new(),
             status_metrics: Vec::new(),
             notices: Vec::new(),
-            usage: UsageHistory::default(),
+            usage: self.fetch_usage_history(api_key),
             warnings: Vec::new(),
             refreshed_at: Utc::now(),
         })
@@ -221,7 +280,9 @@ mod tests {
         },
     };
 
-    use super::{auth::ZaiAuthStore, client::ZaiClient, definition, ZaiProvider};
+    use super::{
+        auth::ZaiAuthStore, client::ZaiClient, definition, PricingStore as ZaiPricing, ZaiProvider,
+    };
 
     #[derive(Default)]
     struct MemorySecrets(Mutex<HashMap<String, Vec<u8>>>);
@@ -283,7 +344,14 @@ mod tests {
         ZaiProvider::with_dependencies(
             auth(key),
             ZaiClient::for_test(&subscription_url, &quota_url, Duration::from_secs(1)),
+            test_pricing(),
         )
+    }
+
+    fn test_pricing() -> Arc<ZaiPricing> {
+        let directory: &'static tempfile::TempDir =
+            Box::leak(Box::new(tempfile::tempdir().unwrap()));
+        Arc::new(ZaiPricing::new(directory.path().join("pricing")).unwrap())
     }
 
     #[test]
@@ -386,6 +454,7 @@ mod tests {
                 "http://127.0.0.1:1",
                 Duration::from_millis(100),
             ),
+            test_pricing(),
         );
         let error = provider.refresh().unwrap_err();
         assert_eq!(error.kind(), ProviderErrorKind::Network);
@@ -405,6 +474,7 @@ mod tests {
                 &delayed,
                 test_http::TIMEOUT_TEST_CLIENT_LIMIT,
             ),
+            test_pricing(),
         )
         .refresh()
         .unwrap_err();

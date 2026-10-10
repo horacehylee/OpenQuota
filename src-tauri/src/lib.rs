@@ -380,7 +380,7 @@ pub fn run() {
                     as Arc<dyn UsageProvider>,
                 Arc::new(OpenCodeProvider::new(pricing.clone())) as Arc<dyn UsageProvider>,
                 Arc::new(OpenRouterProvider::new()?) as Arc<dyn UsageProvider>,
-                Arc::new(ZaiProvider::new()?) as Arc<dyn UsageProvider>,
+                Arc::new(ZaiProvider::new(pricing.clone())?) as Arc<dyn UsageProvider>,
                 Arc::new(KimiProvider::new()?) as Arc<dyn UsageProvider>,
                 Arc::new(MiniMaxProvider::new()?) as Arc<dyn UsageProvider>,
             ]);
