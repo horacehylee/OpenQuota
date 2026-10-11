@@ -10,34 +10,69 @@ const ICON_SIZE: u32 = 32;
 const CENTER: f32 = 16.0;
 const RADIUS: f32 = 10.5;
 const STROKE_WIDTH: f32 = 2.9;
+const INNER_RADIUS: f32 = 5.1;
+const INNER_STROKE_WIDTH: f32 = 2.3;
 const TRACK_ALPHA: u8 = 107;
 const ARC_STEPS: usize = 96;
 
-/// Draws the Windows tray as a monochrome O whose solid arc shows quota left.
-pub(crate) fn render_gauge(remaining_fraction: f64, light_theme: bool) -> Image<'static> {
+/// Draws the Windows tray as nested monochrome Os: session outside, weekly inside.
+pub(crate) fn render_gauge(
+    session_fraction: f64,
+    weekly_fraction: f64,
+    light_theme: bool,
+) -> Image<'static> {
     Image::new_owned(
-        render_rgba(remaining_fraction, light_theme),
+        render_rgba(session_fraction, weekly_fraction, light_theme),
         ICON_SIZE,
         ICON_SIZE,
     )
 }
 
-fn render_rgba(remaining_fraction: f64, light_theme: bool) -> Vec<u8> {
+fn render_rgba(session_fraction: f64, weekly_fraction: f64, light_theme: bool) -> Vec<u8> {
     let mut pixmap = Pixmap::new(ICON_SIZE, ICON_SIZE).expect("tray icon dimensions are valid");
     let foreground = foreground_color(light_theme);
-    let circle = circle_path();
+
+    stroke_ring(
+        &mut pixmap,
+        RADIUS,
+        session_fraction,
+        STROKE_WIDTH,
+        foreground,
+    );
+    stroke_ring(
+        &mut pixmap,
+        INNER_RADIUS,
+        weekly_fraction,
+        INNER_STROKE_WIDTH,
+        foreground,
+    );
+
+    pixmap.take_demultiplied()
+}
+
+fn stroke_ring(
+    pixmap: &mut Pixmap,
+    radius: f32,
+    remaining_fraction: f64,
+    stroke_width: f32,
+    foreground: Rgba,
+) {
     let stroke = Stroke {
-        width: STROKE_WIDTH,
+        width: stroke_width,
         line_cap: LineCap::Round,
         ..Default::default()
     };
 
-    stroke_path(&mut pixmap, &circle, foreground, TRACK_ALPHA, &stroke);
-    if let Some(arc) = arc_path(remaining_fraction) {
-        stroke_path(&mut pixmap, &arc, foreground, 255, &stroke);
+    stroke_path(
+        pixmap,
+        &circle_path(radius),
+        foreground,
+        TRACK_ALPHA,
+        &stroke,
+    );
+    if let Some(arc) = arc_path(radius, remaining_fraction) {
+        stroke_path(pixmap, &arc, foreground, 255, &stroke);
     }
-
-    pixmap.take_demultiplied()
 }
 
 fn stroke_path(pixmap: &mut Pixmap, path: &Path, color: Rgba, alpha: u8, stroke: &Stroke) {
@@ -47,17 +82,17 @@ fn stroke_path(pixmap: &mut Pixmap, path: &Path, color: Rgba, alpha: u8, stroke:
     pixmap.stroke_path(path, &paint, stroke, Transform::identity(), None);
 }
 
-fn circle_path() -> Path {
-    PathBuilder::from_circle(CENTER, CENTER, RADIUS).expect("tray circle path is valid")
+fn circle_path(radius: f32) -> Path {
+    PathBuilder::from_circle(CENTER, CENTER, radius).expect("tray circle path is valid")
 }
 
-fn arc_path(remaining_fraction: f64) -> Option<Path> {
+fn arc_path(radius: f32, remaining_fraction: f64) -> Option<Path> {
     let fraction = remaining_fraction.clamp(0.0, 1.0) as f32;
     if !remaining_fraction.is_finite() || fraction <= 0.0 {
         return None;
     }
     if fraction >= 1.0 {
-        return Some(circle_path());
+        return Some(circle_path(radius));
     }
 
     let steps = ((ARC_STEPS as f32 * fraction).ceil() as usize).max(1);
@@ -65,12 +100,12 @@ fn arc_path(remaining_fraction: f64) -> Option<Path> {
     let mut builder = PathBuilder::new();
     let first_angle = -std::f32::consts::FRAC_PI_2;
     builder.move_to(
-        CENTER + RADIUS * first_angle.cos(),
-        CENTER + RADIUS * first_angle.sin(),
+        CENTER + radius * first_angle.cos(),
+        CENTER + radius * first_angle.sin(),
     );
     for step in 1..=steps {
         let angle = first_angle + sweep * (step as f32 / steps as f32);
-        builder.line_to(CENTER + RADIUS * angle.cos(), CENTER + RADIUS * angle.sin());
+        builder.line_to(CENTER + radius * angle.cos(), CENTER + radius * angle.sin());
     }
     builder.finish()
 }
@@ -136,10 +171,11 @@ mod tests {
     }
 
     #[test]
-    fn tray_is_a_monochrome_o_progress() {
-        let empty = render_gauge(0.0, false);
-        let half = render_gauge(0.5, false);
-        let full = render_gauge(1.0, false);
+    fn tray_shows_separate_outer_and_inner_progress() {
+        let empty = render_gauge(0.0, 0.0, false);
+        let outer_half = render_gauge(0.5, 0.0, false);
+        let inner_half = render_gauge(0.0, 0.5, false);
+        let both_half = render_gauge(0.5, 0.5, false);
 
         let alpha_weight = |rgba: &[u8]| {
             rgba.as_chunks::<4>()
@@ -160,14 +196,33 @@ mod tests {
                 .count()
         };
 
+        let ring_pixels = |rgba: &[u8], radius: f32| {
+            rgba.as_chunks::<4>()
+                .0
+                .iter()
+                .enumerate()
+                .filter(|(index, pixel)| {
+                    let x = (*index as f32 % ICON_SIZE as f32) + 0.5;
+                    let y = ((*index as f32 / ICON_SIZE as f32).trunc()) + 0.5;
+                    let distance = (x - 16.0).hypot(y - 16.0);
+                    (distance - radius).abs() < 1.5 && pixel[3] > 200
+                })
+                .count()
+        };
+
         let empty = empty.rgba();
-        let half = half.rgba();
-        let full = full.rgba();
+        let outer_half = outer_half.rgba();
+        let inner_half = inner_half.rgba();
+        let both_half = both_half.rgba();
 
         assert_eq!(empty.len(), (ICON_SIZE * ICON_SIZE * 4) as usize);
-        assert!(alpha_weight(half) > alpha_weight(empty));
-        assert!(alpha_weight(full) > alpha_weight(half));
-        assert_eq!(colored_pixels(half), 0);
-        assert_eq!(colored_pixels(full), 0);
+        assert!(alpha_weight(outer_half) > alpha_weight(empty));
+        assert!(alpha_weight(inner_half) > alpha_weight(empty));
+        assert!(alpha_weight(both_half) > alpha_weight(outer_half).max(alpha_weight(inner_half)));
+        assert_eq!(ring_pixels(outer_half, 5.1), 0);
+        assert!(ring_pixels(inner_half, 5.1) > 0);
+        assert_eq!(ring_pixels(inner_half, 10.5), 0);
+        assert!(ring_pixels(outer_half, 10.5) > 0);
+        assert_eq!(colored_pixels(both_half), 0);
     }
 }

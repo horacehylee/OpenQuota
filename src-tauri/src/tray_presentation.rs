@@ -85,7 +85,8 @@ pub fn update(
 
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     {
-        let icon = primary_gauge(&groups)
+        let [gauge, _] = primary_gauges(&groups);
+        let icon = gauge
             .map(|gauge| tray_icon::render_gauge(gauge.display_fraction, gauge.remaining_fraction))
             .unwrap_or_else(mark_icon);
         if tray.set_icon(Some(icon)).is_err() {
@@ -96,9 +97,12 @@ pub fn update(
     #[cfg(target_os = "windows")]
     {
         let light_theme = tray_icon::system_uses_light_theme();
-        let icon = primary_gauge(&groups)
-            .map(|gauge| tray_icon::render_gauge(gauge.remaining_fraction, light_theme))
-            .unwrap_or_else(|| tray_icon::render_gauge(0.0, light_theme));
+        let [session, weekly] = primary_gauges(&groups);
+        let icon = tray_icon::render_gauge(
+            session.map_or(0.0, |gauge| gauge.remaining_fraction),
+            weekly.map_or(0.0, |gauge| gauge.remaining_fraction),
+            light_theme,
+        );
         if tray.set_icon(Some(icon)).is_err() {
             crate::app_warn!("tray", "tray icon update failed");
         }
@@ -195,11 +199,18 @@ fn bar_fractions(groups: &[TrayGroup]) -> Vec<f64> {
 }
 
 #[cfg(any(not(target_os = "macos"), test))]
-fn primary_gauge(groups: &[TrayGroup]) -> Option<TrayGauge> {
-    groups
+fn primary_gauges(groups: &[TrayGroup]) -> [Option<TrayGauge>; 2] {
+    let mut gauges = [None, None];
+    for (gauge, slot) in groups
         .iter()
         .flat_map(|group| group.metrics.iter())
-        .find_map(|metric| metric.gauge)
+        .filter_map(|metric| metric.gauge)
+        .take(2)
+        .zip(&mut gauges)
+    {
+        *slot = Some(gauge);
+    }
+    gauges
 }
 
 #[cfg(any(target_os = "macos", test))]
@@ -456,7 +467,7 @@ mod tests {
     };
 
     use super::{
-        bar_fractions, format_tokens, mac_menu_bar_presentation, primary_gauge, resolved_groups,
+        bar_fractions, format_tokens, mac_menu_bar_presentation, primary_gauges, resolved_groups,
         text_groups, MacMenuBarIcon, MacMenuBarPresentation, TrayGauge, TrayGroup, TrayMetric,
     };
     use crate::service::UsageViewState;
@@ -756,7 +767,7 @@ mod tests {
     }
 
     #[test]
-    fn gauge_uses_the_first_pinned_quota_metric() {
+    fn tray_uses_the_first_two_pinned_quota_gauges() {
         let groups = vec![TrayGroup {
             provider_id: "codex".into(),
             metrics: vec![
@@ -784,11 +795,17 @@ mod tests {
             ],
         }];
         assert_eq!(
-            primary_gauge(&groups),
-            Some(TrayGauge {
-                display_fraction: 0.4,
-                remaining_fraction: 0.4,
-            })
+            primary_gauges(&groups),
+            [
+                Some(TrayGauge {
+                    display_fraction: 0.4,
+                    remaining_fraction: 0.4,
+                }),
+                Some(TrayGauge {
+                    display_fraction: 0.8,
+                    remaining_fraction: 0.8,
+                }),
+            ]
         );
     }
 
