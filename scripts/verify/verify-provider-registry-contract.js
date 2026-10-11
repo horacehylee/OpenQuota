@@ -64,7 +64,7 @@ if (/\?\?\s*codex/.test(iconRegistry)) {
   throw new Error('Unknown providers must not silently render the Codex icon.');
 }
 
-const compositionRoot = fs.readFileSync(new URL('src-tauri/src/lib.rs', root), 'utf8');
+const compositionRoot = fs.readFileSync(new URL('src-tauri/src/runtime.rs', root), 'utf8');
 if (/\.has_local_credentials\(\)/.test(compositionRoot)) {
   throw new Error('Tauri setup must not synchronously probe provider credentials.');
 }
@@ -77,7 +77,9 @@ if (!runtimeBlock) {
 }
 const runtimeOrder = [
   'ClaudeProvider',
-  ...[...runtimeBlock.matchAll(/Arc::new\((\w+Provider)::new\b/g)].map(([, provider]) => provider),
+  ...[...runtimeBlock.matchAll(/Arc::new\(\s*(\w+Provider)::new\b/g)].map(
+    ([, provider]) => provider,
+  ),
 ];
 const expectedRuntimeOrder = [
   'ClaudeProvider',
