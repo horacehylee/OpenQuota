@@ -8,10 +8,15 @@ type Rgba = (u8, u8, u8, u8);
 
 const ICON_SIZE: u32 = 32;
 const CENTER: f32 = 16.0;
-const RADIUS: f32 = 10.5;
-const STROKE_WIDTH: f32 = 2.9;
-const INNER_RADIUS: f32 = 5.1;
-const INNER_STROKE_WIDTH: f32 = 2.3;
+const BASE_OUTER_RADIUS: f32 = 10.5;
+const BASE_OUTER_STROKE_WIDTH: f32 = 2.9;
+const BASE_INNER_RADIUS: f32 = 5.1;
+const BASE_INNER_STROKE_WIDTH: f32 = 2.3;
+const RING_SCALE: f32 = CENTER / (BASE_OUTER_RADIUS + BASE_OUTER_STROKE_WIDTH / 2.0);
+const RADIUS: f32 = BASE_OUTER_RADIUS * RING_SCALE;
+const STROKE_WIDTH: f32 = BASE_OUTER_STROKE_WIDTH * RING_SCALE;
+const INNER_RADIUS: f32 = BASE_INNER_RADIUS * RING_SCALE;
+const INNER_STROKE_WIDTH: f32 = BASE_INNER_STROKE_WIDTH * RING_SCALE;
 const TRACK_ALPHA: u8 = 107;
 const ARC_STEPS: usize = 96;
 
@@ -162,7 +167,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{foreground_color, render_gauge, ICON_SIZE};
+    use super::{foreground_color, render_gauge, CENTER, ICON_SIZE, RADIUS, STROKE_WIDTH};
 
     #[test]
     fn foreground_follows_the_taskbar_theme() {
@@ -196,7 +201,7 @@ mod tests {
                 .count()
         };
 
-        let ring_pixels = |rgba: &[u8], radius: f32| {
+        let ring_pixels = |rgba: &[u8], radius: f32, tolerance: f32| {
             rgba.as_chunks::<4>()
                 .0
                 .iter()
@@ -205,7 +210,7 @@ mod tests {
                     let x = (*index as f32 % ICON_SIZE as f32) + 0.5;
                     let y = ((*index as f32 / ICON_SIZE as f32).trunc()) + 0.5;
                     let distance = (x - 16.0).hypot(y - 16.0);
-                    (distance - radius).abs() < 1.5 && pixel[3] > 200
+                    (distance - radius).abs() < tolerance && pixel[3] > 200
                 })
                 .count()
         };
@@ -219,10 +224,63 @@ mod tests {
         assert!(alpha_weight(outer_half) > alpha_weight(empty));
         assert!(alpha_weight(inner_half) > alpha_weight(empty));
         assert!(alpha_weight(both_half) > alpha_weight(outer_half).max(alpha_weight(inner_half)));
-        assert_eq!(ring_pixels(outer_half, 5.1), 0);
-        assert!(ring_pixels(inner_half, 5.1) > 0);
-        assert_eq!(ring_pixels(inner_half, 10.5), 0);
-        assert!(ring_pixels(outer_half, 10.5) > 0);
+        assert_eq!(ring_pixels(outer_half, 5.1, 1.5), 0);
+        assert!(ring_pixels(inner_half, 5.1, 1.5) > 0);
+        assert_eq!(ring_pixels(inner_half, RADIUS, 1.5), 0);
+        assert!(ring_pixels(outer_half, RADIUS, 1.5) > 0);
         assert_eq!(colored_pixels(both_half), 0);
+    }
+
+    #[test]
+    fn inner_ring_keeps_the_original_outer_ring_ratio() {
+        let scale = CENTER / (10.5 + 2.9 / 2.0);
+        let radius = 5.1 * scale;
+        let inner = render_gauge(0.0, 1.0, false);
+
+        let pixels = inner
+            .rgba()
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(index, pixel)| {
+                let x = (*index as f32 % ICON_SIZE as f32) + 0.5;
+                let y = ((*index as f32 / ICON_SIZE as f32).trunc()) + 0.5;
+                let distance = (x - CENTER).hypot(y - CENTER);
+                (distance - radius).abs() < 0.4 && pixel[3] > 200
+            })
+            .count();
+
+        assert!(pixels > 0);
+    }
+
+    #[test]
+    fn outer_ring_spans_the_full_tray_slot() {
+        let full = render_gauge(1.0, 0.0, false);
+        let rgba = full.rgba();
+
+        let bounds = rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .enumerate()
+            .filter(|(_, pixel)| pixel[3] > 0)
+            .map(|(index, _)| {
+                let x = index % ICON_SIZE as usize;
+                let y = index / ICON_SIZE as usize;
+                (x, y)
+            })
+            .fold(
+                (usize::MAX, usize::MAX, 0, 0),
+                |(min_x, min_y, max_x, max_y), (x, y)| {
+                    (min_x.min(x), min_y.min(y), max_x.max(x), max_y.max(y))
+                },
+            );
+
+        assert_eq!(
+            bounds,
+            (0, 0, ICON_SIZE as usize - 1, ICON_SIZE as usize - 1)
+        );
+        assert_eq!(RADIUS + STROKE_WIDTH / 2.0, CENTER);
     }
 }
